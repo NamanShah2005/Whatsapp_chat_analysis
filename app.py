@@ -25,33 +25,33 @@ from wordcloud import WordCloud
 extractor = URLExtract()
 # nlp = pipeline("sentiment-analysis", model=model, tokenizer=tokenizer)
 
-def preprocess(data):
-    pattern = '\d{1,2}/\d{1,2}/\d{2,4},\s\d{1,2}:\d{1,2}\s-\s'
-    messages = re.split(pattern, data)[1:]
-    dates = re.findall(pattern, data)
-    df = pd.DataFrame({'user_message' : messages, 'date' : dates})
-    df['date'] = pd.to_datetime(df['date'], format="%d/%m/%y, %H:%M - ")
-    user = []
-    messages = []
-    for message in df['user_message']:
-        entry = re.split('([\w\W]+?):\s', message)
-        if(entry[1:]):
-            user.append(entry[1])
-            messages.append(entry[2])
-        else:
-            user.append('Group Notification')
-            messages.append(message)
-    df['user'] = user
-    df['message'] = messages
-    df = df.drop(['user_message'], axis = 1)
-    df['year'] = df['date'].dt.year
-    df['month'] = df['date'].dt.month
-    df['month_name'] = df['date'].dt.month_name()
-    df['day'] = df['date'].dt.day
-    df['day_name'] = df['date'].dt.day_name()
-    df['hour'] = df['date'].dt.hour
-    df['minute'] = df['date'].dt.minute
-    return df
+# def preprocess(data):
+#     pattern = '\d{1,2}/\d{1,2}/\d{2,4},\s\d{1,2}:\d{1,2}\s-\s'
+#     messages = re.split(pattern, data)[1:]
+#     dates = re.findall(pattern, data)
+#     df = pd.DataFrame({'user_message' : messages, 'date' : dates})
+#     df['date'] = pd.to_datetime(df['date'], format="%d/%m/%y, %H:%M - ")
+#     user = []
+#     messages = []
+#     for message in df['user_message']:
+#         entry = re.split('([\w\W]+?):\s', message)
+#         if(entry[1:]):
+#             user.append(entry[1])
+#             messages.append(entry[2])
+#         else:
+#             user.append('Group Notification')
+#             messages.append(message)
+#     df['user'] = user
+#     df['message'] = messages
+#     df = df.drop(['user_message'], axis = 1)
+#     df['year'] = df['date'].dt.year
+#     df['month'] = df['date'].dt.month
+#     df['month_name'] = df['date'].dt.month_name()
+#     df['day'] = df['date'].dt.day
+#     df['day_name'] = df['date'].dt.day_name()
+#     df['hour'] = df['date'].dt.hour
+#     df['minute'] = df['date'].dt.minute
+#     return df
 
 def sidenames(df):
     names = df.user.unique()
@@ -280,10 +280,26 @@ def mostcommonwords(dfe):
 
 def preprocess(data):
     pattern = '\d{1,2}/\d{1,2}/\d{2,4},\s\d{1,2}:\d{1,2}\s-\s'
-    messages = re.split(pattern, data)[1:]
-    dates = re.findall(pattern, data)
+    pattern2 = '\d{1,2}/\d{1,2}/\d{2,4},\s\d{1,2}:\d{1,2}\s[a,p]m\s-\s'
+    pattern3 = '\d{1,2}/\d{1,2}/\d{2,4},\s\d{1,2}:\d{1,2}'
+    # pattern = '\d{1,2}/\d{1,2}/\d{2,4},\s\d{1,2}:\d{1,2}\s[a,p]m\s-\s'
+    # messages = re.split(pattern, data)[1:]
+    # dates = re.findall(pattern, data)
+
+    if re.findall(pattern, data):
+        messages = re.split(pattern, data)[1:]
+        dates = re.findall(pattern, data)
+        date_format = "%d/%m/%y, %H:%M - "
+    else:
+        messages = re.split(pattern2, data)[1:]
+        dates = re.findall(pattern2, data)
+        date_format = "%d/%m/%y, %I:%M %p - "
+    # df = pd.DataFrame({'user_message' : messages, 'date' : dates})
+
     df = pd.DataFrame({'user_message' : messages, 'date' : dates})
-    df['date'] = pd.to_datetime(df['date'], format="%d/%m/%y, %H:%M - ")
+    df['date'] = pd.to_datetime(df['date'], format=date_format)
+    # df['date'] = pd.to_datetime(df['date'], format="%d/%m/%y, %H:%M - ")
+    # df['date'] = pd.to_datetime(df['date'], format="%d/%m/%y, %H:%M pm - ")
     user = []
     messages = []
     for message in df['user_message']:
