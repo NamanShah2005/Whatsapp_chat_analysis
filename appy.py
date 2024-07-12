@@ -16,42 +16,8 @@ import matplotlib.pyplot as plt
 from datetime import datetime, timedelta
 import seaborn as sn
 from wordcloud import WordCloud
-# from transformers import BertTokenizer, BertForSequenceClassification
-# from transformers import pipeline
-
-# model = BertForSequenceClassification.from_pretrained("ahmedrachid/FinancialBERT-Sentiment-Analysis",num_labels=3)
-# tokenizer = BertTokenizer.from_pretrained("ahmedrachid/FinancialBERT-Sentiment-Analysis")
 
 extractor = URLExtract()
-# nlp = pipeline("sentiment-analysis", model=model, tokenizer=tokenizer)
-
-# def preprocess(data):
-#     pattern = '\d{1,2}/\d{1,2}/\d{2,4},\s\d{1,2}:\d{1,2}\s-\s'
-#     messages = re.split(pattern, data)[1:]
-#     dates = re.findall(pattern, data)
-#     df = pd.DataFrame({'user_message' : messages, 'date' : dates})
-#     df['date'] = pd.to_datetime(df['date'], format="%d/%m/%y, %H:%M - ")
-#     user = []
-#     messages = []
-#     for message in df['user_message']:
-#         entry = re.split('([\w\W]+?):\s', message)
-#         if(entry[1:]):
-#             user.append(entry[1])
-#             messages.append(entry[2])
-#         else:
-#             user.append('Group Notification')
-#             messages.append(message)
-#     df['user'] = user
-#     df['message'] = messages
-#     df = df.drop(['user_message'], axis = 1)
-#     df['year'] = df['date'].dt.year
-#     df['month'] = df['date'].dt.month
-#     df['month_name'] = df['date'].dt.month_name()
-#     df['day'] = df['date'].dt.day
-#     df['day_name'] = df['date'].dt.day_name()
-#     df['hour'] = df['date'].dt.hour
-#     df['minute'] = df['date'].dt.minute
-#     return df
 
 def sidenames(df):
     names = df.user.unique()
@@ -61,23 +27,30 @@ def sidenames(df):
     return names
 
 def fetch_stats(name, df):
-    if(name == 'Overall'):
+    if name == 'Overall':
         words = []
         urls = []
+        media_count = df[df['message'] == '<Media omitted>\n'].shape[0]
         for message in df['message']:
-            words.extend(message.split())
-            urls.extend(extractor.find_urls(message))
-        return df.shape[0], len(words), df[df['message'] == '<Media omitted>\n'].shape[0], len(urls)
-    
-
+            if message not in ['<Media omitted>\n', 'This message was deleted\n', 'null\n', 'You deleted this message\n']:
+                words.extend(message.split())
+                urls.extend(extractor.find_urls(message))
+        total_messages = df.shape[0]
+        total_words = len(words)
+        total_urls = len(urls)
+        return total_messages, total_words, media_count, total_urls
+    user_df = df[df['user'] == name]
     words = []
     urls = []
-    for message in df[df['user'] == name]['message']:
+    media_count = user_df[user_df['message'] == '<Media omitted>\n'].shape[0]
+    for message in user_df['message']:
+        if message not in ['<Media omitted>\n', 'This message was deleted\n', 'null\n', 'You deleted this message\n']:
             words.extend(message.split())
             urls.extend(extractor.find_urls(message))
-
-
-    return df[df['user'] == name].shape[0], len(words), df[(df['message'] == '<Media omitted>\n') & (df['user'] == name)].shape[0], len(urls)
+    total_messages = user_df.shape[0]
+    total_words = len(words)
+    total_urls = len(urls)
+    return total_messages, total_words, media_count, total_urls
 
 def showdf(name, df):
      if(name == 'Overall'):
@@ -130,6 +103,7 @@ def monthly_timeline(dfe, day_mes):
     st.pyplot(fig)
 
 def daily_timeline(dfe, all_months, all_days):
+    # print(len(all_days))
     for i in range(len(all_days)):
         all_days[i] = re.sub(r'\b0(\d)', r'\1', all_days[i])
     pattern = '\d{1,2}-'
@@ -143,11 +117,27 @@ def daily_timeline(dfe, all_months, all_days):
     fig, ax = plt.subplots()
     ax.plot(data['x'], data['y'], color='red')
     first_days_of_months = [f'{first_date}-{month}' for month in all_months]
-    ax.set_xticks(first_days_of_months)
-    ax.set_xticklabels(first_days_of_months, rotation=90)
-    ax.set_xlabel('Days')
-    ax.set_ylabel('Message Count')
-    st.pyplot(fig)
+    all_days_sorted = []
+    tots = len(first_days_of_months)
+    if(tots > 12):
+        k = int(tots/12)
+        i = 0
+        while True:
+            if(i >= tots):
+                break
+            all_days_sorted.append(first_days_of_months[i])
+            i = i + k
+        ax.set_xticks(all_days_sorted)
+        ax.set_xticklabels(all_days_sorted, rotation=90)
+        ax.set_xlabel('Days')
+        ax.set_ylabel('Message Count')
+        st.pyplot(fig)
+    else:
+        ax.set_xticks(first_days_of_months)
+        ax.set_xticklabels(first_days_of_months, rotation=90)
+        ax.set_xlabel('Days')
+        ax.set_ylabel('Message Count')
+        st.pyplot(fig)
 
 def most_busy_day_graph(dfe, day_mes):
     days = [day_mes[i][0] for i in range(len(day_mes))]
@@ -162,7 +152,6 @@ def most_busy_day_graph(dfe, day_mes):
     ax.set_xticklabels(days, rotation=90)
     ax.set_xlabel('Days')
     ax.set_ylabel('Message Count')
-    # ax.title("Day wise message count")
     st.pyplot(fig)
 
 def most_busy_month_graph(dfe, day_mes):
@@ -215,6 +204,78 @@ def most_busy_users(name, df, dfe):
     else:
         return None
     
+def generate_message_pie_chart(name, df):
+    if name == 'Overall':
+        user_message_counts = df['user'].value_counts()
+        sorted_users = user_message_counts.index.tolist()
+        fig, ax = plt.subplots(figsize=(8, 8))  # Set the figure size for better visualization
+        sorted_user_message_counts = user_message_counts.loc[sorted_users]
+        explode = [0.1] * len(sorted_user_message_counts)  # Explode all slices slightly for emphasis
+        wedges, texts, autotexts = ax.pie(sorted_user_message_counts, labels=None, autopct='', startangle=140, explode=explode)
+        legend_labels = [f'{user} ({count} Messages)' for user, count in zip(sorted_user_message_counts.index, sorted_user_message_counts)]
+        plt.legend(wedges, legend_labels, title='Users', loc='center left', bbox_to_anchor=(1, 0, 0.5, 1))
+        plt.tight_layout()
+        st.pyplot(fig)
+        return user_message_counts
+    
+def generate_deleted_message_pie_chart(name, df):
+    if name == 'Overall':
+        deleted_messages_df = df[df['message'].isin(['This message was deleted\n', 'You deleted this message\n'])]
+        user_deleted_counts = deleted_messages_df['user'].value_counts()
+        if user_deleted_counts.empty:
+            st.write("No deleted messages found.")
+            return
+        st.title("Deleted messages by users")
+        fig, ax = plt.subplots(figsize=(8, 8))
+        explode = [0.1] * len(user_deleted_counts)
+        wedges, texts = ax.pie(user_deleted_counts, labels=None, startangle=140, explode=explode)
+        legend_labels = [f'{user} ({count} Deleted Messages)' for user, count in zip(user_deleted_counts.index, user_deleted_counts)]
+        plt.legend(wedges, legend_labels, title='Users', loc='center left', bbox_to_anchor=(1, 0, 0.5, 1))
+        plt.tight_layout()
+        st.pyplot(fig)
+        return user_deleted_counts
+
+def most_busy_users_by_media(name, df):
+    if name == 'Overall':
+        media_df = df[df['message'] == "<Media omitted>\n"]
+        media_counts = media_df.groupby('user').size().reset_index(name='media_count')
+        sorted_media_counts = media_counts.sort_values(by='media_count', ascending=False)
+        top_users = sorted_media_counts.head(5)
+        fig, ax = plt.subplots()
+        ax.bar(top_users['user'], top_users['media_count'], color='blue')
+        ax.set_xlabel('Username')
+        ax.set_xticklabels(top_users['user'], rotation=90)
+        ax.set_ylabel('Media Message Count')
+        plt.title("Top Users by Media Messages")
+        st.pyplot(fig)
+        return sorted_media_counts
+    else:
+        media_df = df[(df['name'] == name) & (df['message'] == "<Media omitted>\n")]
+        media_counts = media_df.groupby('user').size().reset_index(name='media_count')
+        sorted_media_counts = media_counts.sort_values(by='media_count', ascending=False)
+        return sorted_media_counts 
+
+def users_with_most_deleted_messages(name, df):
+    if name == 'Overall':
+        media_df = df[df['message'].isin(['This message was deleted\n', 'You deleted this message\n'])]
+    else:
+        media_df = df[(df['user'] == name) & 
+                       (df['message'].isin(['This message was deleted\n', 'You deleted this message\n']))]
+    media_counts = media_df.groupby('user').size().reset_index(name='media_count')
+    sorted_media_counts = media_counts.sort_values(by='media_count', ascending=False)
+    if sorted_media_counts.empty:
+        st.write("No deleted messages found.")
+        return sorted_media_counts
+    top_users = sorted_media_counts.head(5)
+    fig, ax = plt.subplots()
+    ax.bar(top_users['user'], top_users['media_count'], color='blue')
+    ax.set_xlabel('Username')
+    ax.set_xticklabels(top_users['user'], rotation=90)
+    ax.set_ylabel('Deleted Message Count')
+    plt.title("Top Users by Deleted Messages")
+    st.pyplot(fig)
+    return sorted_media_counts
+
 def user_percentages(name, user_mes):
     if(name == 'Overall'):
         user = []
@@ -269,22 +330,28 @@ def mostcommonwords(dfe):
     st.pyplot(fig)
     return sorted_word_count
 
-# def sentiment_analysis(dfe):
-#     text = ' '.join(dfe['message'].astype(str))
-#     print(text)
-#     result = nlp(text)
-#     print(result)
-    # st.header("Sentiment Analysis")
-    # st.write(f"Label : {nlp(result)['label']}")
-    # st.write(f"Score : {nlp(result)['score']}")
+def generate_tagged_person_pie_chart(name, df):
+    if name == 'Overall':
+        tagged_messages = df[df['message'].str.contains('@')]
+        tagged_users = tagged_messages['message'].str.extract(r'@(\w+)')[0]
+        tagged_counts = tagged_users.value_counts()
+        if tagged_counts.empty:
+            st.write("No tagged users found.")
+            return
+        st.title("Tagged Person")
+        fig, ax = plt.subplots(figsize=(8, 8))
+        explode = [0.1] * len(tagged_counts)
+        wedges, texts = ax.pie(tagged_counts, labels=None, startangle=140, explode=explode)
+        legend_labels = [f'{user} ({count} Tags)' for user, count in zip(tagged_counts.index, tagged_counts)]
+        plt.legend(wedges, legend_labels, title='Tagged Users', loc='center left', bbox_to_anchor=(1, 0, 0.5, 1))
+        plt.tight_layout()
+        st.pyplot(fig)
+        return tagged_counts
 
 def preprocess(data):
     pattern = '\d{1,2}/\d{1,2}/\d{2,4},\s\d{1,2}:\d{1,2}\s-\s'
     pattern2 = '\d{1,2}/\d{1,2}/\d{2,4},\s\d{1,2}:\d{1,2}\s[a,p]m\s-\s'
     pattern3 = '\d{1,2}/\d{1,2}/\d{2,4},\s\d{1,2}:\d{1,2}'
-    # pattern = '\d{1,2}/\d{1,2}/\d{2,4},\s\d{1,2}:\d{1,2}\s[a,p]m\s-\s'
-    # messages = re.split(pattern, data)[1:]
-    # dates = re.findall(pattern, data)
 
     if re.findall(pattern, data):
         messages = re.split(pattern, data)[1:]
@@ -294,12 +361,8 @@ def preprocess(data):
         messages = re.split(pattern2, data)[1:]
         dates = re.findall(pattern2, data)
         date_format = "%d/%m/%y, %I:%M %p - "
-    # df = pd.DataFrame({'user_message' : messages, 'date' : dates})
-
     df = pd.DataFrame({'user_message' : messages, 'date' : dates})
     df['date'] = pd.to_datetime(df['date'], format=date_format)
-    # df['date'] = pd.to_datetime(df['date'], format="%d/%m/%y, %H:%M - ")
-    # df['date'] = pd.to_datetime(df['date'], format="%d/%m/%y, %H:%M pm - ")
     user = []
     messages = []
     for message in df['user_message']:
@@ -332,7 +395,6 @@ def sidenames(df):
 def most_busy_day(dfe):
     monname = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
     mesonday = [len(dfe[dfe['day_name'] == i]) for i in monname]
-    
     mon_mes = [[monname[i], mesonday[i]] for i in range(len(monname))]
     sorted_mon_mes = sorted(mon_mes, key=lambda x: x[1], reverse=True)
     return sorted_mon_mes
@@ -340,7 +402,6 @@ def most_busy_day(dfe):
 def most_busy_month(dfe):
     dayname = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', ' September', 'October', 'November', 'December']
     mesonday = [len(dfe[dfe['month_name'] == i]) for i in dayname]
-    
     day_mes = [[dayname[i], mesonday[i]] for i in range(len(dayname))]
     sorted_day_mes = sorted(day_mes, key=lambda x: x[1], reverse=True)
     return [sorted_day_mes, day_mes]
@@ -374,6 +435,96 @@ def extract_unique_emojis(dfe):
     st.pyplot(fig)
     return sorted_emoji_counts
 
+def ranking(dfe):
+    total_messages = dfe['user'].value_counts()
+    deleted_messages = dfe[dfe['message'].isin(['This message was deleted\n', 'You deleted this message\n'])]['user'].value_counts()
+    media_messages = dfe[dfe['message'].str.contains('<Media omitted>\n', na=False)]['user'].value_counts()
+    rank_df = pd.DataFrame({
+        'total_messages': total_messages,
+        'deleted_messages': deleted_messages,
+        'media_messages': media_messages
+    }).fillna(0)
+    rank_df['total_rank'] = rank_df['total_messages'].rank(ascending=False, method='min')
+    rank_df['deleted_rank'] = rank_df['deleted_messages'].rank(ascending=False, method='min')
+    rank_df['media_rank'] = rank_df['media_messages'].rank(ascending=False, method='min')
+    return rank_df.reset_index().rename(columns={'index': 'user'})
+
+def user_message_rankings(dfe):
+    total_messages = dfe['user'].value_counts().reset_index()
+    total_messages.columns = ['user', 'total_messages']
+    deleted_messages_df = dfe[dfe['message'].isin(['This message was deleted\n', 'You deleted this message\n'])]
+    deleted_counts = deleted_messages_df['user'].value_counts().reset_index()
+    deleted_counts.columns = ['user', 'deleted_messages']
+    media_messages_df = dfe[dfe['message'].str.contains("<Media omitted>\n", na=False)]
+    media_counts = media_messages_df['user'].value_counts().reset_index()
+    media_counts.columns = ['user', 'media_messages']
+    merged_df = total_messages.merge(deleted_counts, on='user', how='outer').fillna(0)
+    merged_df = merged_df.merge(media_counts, on='user', how='outer').fillna(0)
+    merged_df['total_rank'] = merged_df['total_messages'].rank(ascending=False, method='min')
+    merged_df['deleted_rank'] = merged_df['deleted_messages'].rank(ascending=False, method='min')
+    merged_df['media_rank'] = merged_df['media_messages'].rank(ascending=False, method='min')
+    result_df = merged_df[['user', 'total_messages', 'total_rank', 'deleted_messages', 'deleted_rank', 'media_messages', 'media_rank']]
+    return result_df
+
+def extract_info(name, rank_df, dfe):
+    user_info = rank_df[rank_df['user'] == name]
+    if len(user_info) == 0:
+        return None
+    total_messages = user_info['total_messages'].values[0]
+    deleted_messages = user_info['deleted_messages'].values[0]
+    media_messages = user_info['media_messages'].values[0]
+    total_rank = user_info['total_rank'].values[0]
+    deleted_rank = user_info['deleted_rank'].values[0]
+    media_rank = user_info['media_rank'].values[0]
+    filtered_dfe = dfe[~dfe['message'].isin(['<Media omitted>\n', 'This message was deleted\n', 'null\n', 'You deleted this message\n'])]
+    total_words = filtered_dfe['message'].str.split().str.len().sum()
+    words = filtered_dfe['message'].str.split(expand=True).stack()
+    top_word = words.value_counts().idxmax() if not words.empty else None
+    unique_emojis = set()
+    emojis_text = ' '.join(dfe['message'].astype(str))
+    kk = emojis_text
+    emojis = ''.join(c for c in emojis_text if c in emoji.EMOJI_DATA)
+    emojis_text = emoji.demojize(emojis)
+    for emoji_char in emojis:
+        unique_emojis.add(emoji_char)
+    emoji_counts = {}
+    for emoji_char in unique_emojis:
+        for emoji_word in kk:
+            if(emoji_char == emoji_word):
+                if(emoji_char in emoji_counts.keys()):
+                    emoji_counts[emoji_char] = emoji_counts[emoji_char] + 1
+                else:
+                    emoji_counts[emoji_char] = 1
+    sorted_emoji_counts = sorted(emoji_counts.items(), key=lambda x: x[1], reverse=True)
+    if(len(sorted_emoji_counts) != 0):
+        most_used_emoji = sorted_emoji_counts[0][0]
+    else:
+        most_used_emoji = 0
+    month_most_interaction = dfe['month_name'].value_counts().idxmax()
+    day_most_interaction = dfe['day_name'].value_counts().idxmax()
+    hour_counts = dfe['hour'].value_counts()
+    most_frequent_hour = hour_counts.idxmax()
+    hour_range = f"{most_frequent_hour}-{most_frequent_hour + 1}"
+    summary_df = pd.DataFrame({
+        'total_messages': [total_messages],
+        'deleted_messages': [deleted_messages],
+        'media_messages': [media_messages],
+        'total_words': [total_words],
+        'top_word': [top_word],
+        'most_used_emoji': [most_used_emoji],
+        'month_most_interaction': [month_most_interaction],
+        'day_most_interaction': [day_most_interaction],
+        'hour_most_interaction': [hour_range],
+        'total_rank': [total_rank],
+        'deleted_rank': [deleted_rank],
+        'media_rank': [media_rank]
+    })
+
+    return summary_df
+
+st.set_page_config(
+    page_title="Whatsapp Chat Analysis"
+)
 st.sidebar.title("Whatsapp Chat Analyzer")
 uploaded_file = st.sidebar.file_uploader("Choose a file")
 if uploaded_file is not None:
@@ -383,6 +534,25 @@ if uploaded_file is not None:
     names = sidenames(df)
     name = st.sidebar.selectbox("Choose the user", names)
     if(st.sidebar.button('Show Analysis')):
+        dfe = showdf(name, df)
+        if(name != 'Overall'):
+            ddff = user_message_rankings(df)
+            rank_df = ranking(df)
+            user_summary = extract_info(name, rank_df, dfe)
+            text = f"""
+Hello {name}!
+
+You are currently ranked {int(user_summary['total_rank'].iloc[0])}{'st' if user_summary['total_rank'].iloc[0] == 1 else 'nd' if user_summary['total_rank'].iloc[0] == 2 else 'rd' if user_summary['total_rank'].iloc[0] == 3 else 'th'} most active member of this group, having contributed a total of {user_summary['total_messages'].iloc[0]} messages. Out of these, {int(user_summary['media_messages'].iloc[0])} messages were media (including images, videos, and audio), placing you at {int(user_summary['media_rank'].iloc[0])}{'st' if user_summary['media_rank'].iloc[0] == 1 else 'nd' if user_summary['media_rank'].iloc[0] == 2 else 'rd' if user_summary['media_rank'].iloc[0] == 3 else 'th'} position in media contributions.
+
+Regarding deleted messages, you {"haven't deleted a single message" if user_summary['deleted_messages'].iloc[0] == 0 else f"have deleted a total of {int(user_summary['deleted_messages'].iloc[0])} messages"}. Your contributions amounts to {int(user_summary['total_words'].iloc[0])} words throughout your conversations.
+
+In terms of your interaction patterns, your highest activity time is during {user_summary['hour_most_interaction'].iloc[0]}, with the most interaction occurring on {user_summary['day_most_interaction'].iloc[0]} and the busiest month being {user_summary['month_most_interaction'].iloc[0]}.
+
+Additionally, your favorite word (the most used during our chats) is '{user_summary['top_word'].iloc[0]}', and {"You haven't used any emojis during your conversation" if user_summary['most_used_emoji'].iloc[0] == 0 else f" your most used emoji is {user_summary['most_used_emoji'].iloc[0]}"}.
+
+Thank you for your participation! For further details, please see below. Have a great day!
+"""
+            st.write(text)
         st.markdown("<h1 style='border-bottom : 2px solid white; text-align: center;'>Top Statistics</h1>", unsafe_allow_html=True)
         col1, col2 = st.columns(2)
         with col1:
@@ -411,7 +581,6 @@ if uploaded_file is not None:
             styled_stats = f"<h2 style='color: blue; text-align:center; justify-content: center'>{stats}</h2>"
             st.markdown(styled_stats, unsafe_allow_html=True)
         st.markdown("<h1 style='text-align: center;'>All Messages</h1>", unsafe_allow_html=True)
-        dfe = showdf(name, df)
         st.dataframe(dfe)
         dfe['month_year'] = dfe.apply(combine_month_year, axis=1)
         dfe['day_month_year'] = dfe.apply(combine_day_month_year, axis=1)
@@ -431,14 +600,16 @@ if uploaded_file is not None:
         with col2:
             most_busy_month_graph(dfe, mon_mes)
         day_time_graph(dfe)
-        st.title("Top Users")
-        col1, col2 = st.columns(2)
-        with col1:
-            user_messages = most_busy_users(name, df, dfe)
-        with col2:
-            user_percentages(name, user_messages)
+        if(name == 'Overall'):
+            st.title("Top Users")
+            col1, col2 = st.columns(2)
+            with col1:
+                user_messages = most_busy_users(name, df, dfe)
+            with col2:
+                user_percentages(name, user_messages)
+            user_message_count = generate_message_pie_chart(name, df)
         st.title("Word Cloud")
-        generate_wordcloud(df)
+        generate_wordcloud(dfe)
         st.title("Top Words")
         sorted_word_count = mostcommonwords(dfe)
         st.title("Emoji Counts")
@@ -448,5 +619,12 @@ if uploaded_file is not None:
         with col2:
             dfes = pd.DataFrame(emoji_count, columns=['Emojis', 'Frequency'])
             st.dataframe(dfes.head())
-        # st.header("Sentiment Analysis")
-        # sentiment_analysis(dfe)
+        if(name == 'Overall'):
+            st.title("Top Users by Media Messages")
+            col1, col2 = st.columns(2)
+            with col1:
+                media_message = most_busy_users_by_media(name, df)
+            with col2:
+                st.dataframe(media_message, hide_index=True)
+            user_deleted_messages = generate_deleted_message_pie_chart(name, df)
+            generate_tagged_person_pie_chart(name, df)
